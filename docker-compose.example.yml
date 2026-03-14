@@ -1,0 +1,16 @@
+# Agregar este servicio al docker-compose.yml del cliente
+# Los valores de CLIENT_ID y AGENT_TOKEN los copiás del panel
+
+services:
+  fleet-agent:
+    build: ./fleet-agent     # o image: nexosoluciones/fleet-agent:latest
+    restart: unless-stopped
+    environment:
+      PANEL_WS_URL:  ${FLEET_PANEL_URL:-wss://panel.monitoreocinexo.com.ar/ws/agent}
+      CLIENT_ID:     ${FLEET_CLIENT_ID}
+      AGENT_TOKEN:   ${FLEET_TOKEN}
+      COMPOSE_FILE:  /opt/app/docker-compose.yml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yml:/opt/app/docker-compose.yml:ro
+    # Sin ports: — solo conexión WebSocket SALIENTE al panel
