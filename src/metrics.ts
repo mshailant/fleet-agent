@@ -10,15 +10,13 @@ async function getCpu(): Promise<number> {
   const before = os.cpus().map(c => c.times);
   await new Promise(r => setTimeout(r, 200));
   const after = os.cpus().map(c => c.times);
-
   const pcts = before.map((b, i) => {
     const a     = after[i];
     const idle  = a.idle - b.idle;
-    const total = (Object.values(a).reduce((s, v) => s + v, 0))
-                - (Object.values(b).reduce((s, v) => s + v, 0));
+    const total = Object.values(a).reduce((s, v) => s + v, 0)
+                - Object.values(b).reduce((s, v) => s + v, 0);
     return total === 0 ? 0 : 100 - Math.round((idle / total) * 100);
   });
-
   return Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length);
 }
 
@@ -27,26 +25,20 @@ function getRam(): number {
   return Math.round(((os.totalmem() - os.freemem()) / os.totalmem()) * 100);
 }
 
-// ─── Disk (BusyBox + GNU compatible) ─────────────────────────────────────────
+// ─── Disk ─────────────────────────────────────────────────────────────────────
 function getDisk(): number {
   try {
     const out  = execSync('df / | tail -1').toString().trim();
     const cols = out.split(/\s+/);
-    // POSIX: 0=Filesystem 1=1K-blocks 2=Used 3=Available 4=Use% 5=Mounted
     const pct  = cols[4] ?? cols[3] ?? '0';
     return parseInt(pct.replace('%', ''), 10);
-  } catch {
-    return 0;
-  }
+  } catch { return 0; }
 }
 
 // ─── Uptime ───────────────────────────────────────────────────────────────────
 function getUptime(): string {
   const sec = os.uptime();
-  const d   = Math.floor(sec / 86400);
-  const h   = Math.floor((sec % 86400) / 3600);
-  const m   = Math.floor((sec % 3600) / 60);
-  return `${d}d ${h}h ${m}m`;
+  return `${Math.floor(sec / 86400)}d ${Math.floor((sec % 86400) / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
 }
 
 // ─── Containers ───────────────────────────────────────────────────────────────
@@ -59,24 +51,41 @@ async function getContainers(): Promise<ContainerInfo[]> {
       image:  c.Image,
       uptime: c.Status,
     }));
-  } catch {
-    return [];
-  }
+  } catch { return []; }
+}
+
+// ─── App version — extrae el tag de la imagen del contenedor principal ────────
+export async function getAppVersion(appContainer: string): Promise<string | null> {
+  if (!appContainer) return null;
+  try {
+    const list = await docker.listContainers({ all: true });
+    const c = list.find(c =>
+      c.Names.some(n => n.replace('/', '') === appContainer)
+    );
+    if (!c) return null;
+    // imagen: "nexosoluciones/cinexoplatform:v7.3.37" → extraer tag
+    const tag = c.Image.split(':')[1] ?? null;
+    return tag;
+  } catch { return null; }
 }
 
 // ─── Overall status ───────────────────────────────────────────────────────────
 function computeStatus(containers: ContainerInfo[]): AgentStatus {
   const total   = containers.length;
   const running = containers.filter(c => c.status === 'running').length;
-  if (total === 0)          return 'unknown';
-  if (running === total)    return 'online';
-  if (running === 0)        return 'offline';
+  if (total === 0)       return 'unknown';
+  if (running === total) return 'online';
+  if (running === 0)     return 'offline';
   return 'degraded';
 }
 
 // ─── Public ───────────────────────────────────────────────────────────────────
-export async function getMetrics(): Promise<Metrics> {
-  const [cpu, containers] = await Promise.all([getCpu(), getContainers()]);
+export async function getMetrics(appContainer: string): Promise<Metrics> {
+  const [cpu, containers, appVersion] = await Promise.all([
+    getCpu(),
+    getContainers(),
+    getAppVersion(appContainer),
+  ]);
   return {
     cpu,
     ram:        getRam(),
@@ -84,6 +93,7 @@ export async function getMetrics(): Promise<Metrics> {
     uptime:     getUptime(),
     status:     computeStatus(containers),
     containers,
+    appVersion,
   };
 }
 

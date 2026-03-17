@@ -1,13 +1,12 @@
-// ─── Agent config ─────────────────────────────────────────────────────────────
 export interface AgentConfig {
   panelWsUrl:      string;
   clientId:        string;
   agentToken:      string;
   composeFile:     string;
   metricsInterval: number;
+  appContainer:    string;  // nombre del contenedor a monitorear para la versión
 }
 
-// ─── Metrics ──────────────────────────────────────────────────────────────────
 export interface ContainerInfo {
   name:   string;
   status: string;
@@ -18,27 +17,26 @@ export interface ContainerInfo {
 export type AgentStatus = 'online' | 'offline' | 'degraded' | 'unknown';
 
 export interface Metrics {
-  cpu:        number;
-  ram:        number;
-  disk:       number;
-  uptime:     string;
-  status:     AgentStatus;
-  containers: ContainerInfo[];
+  cpu:          number;
+  ram:          number;
+  disk:         number;
+  uptime:       string;
+  status:       AgentStatus;
+  containers:   ContainerInfo[];
+  appVersion:   string | null;  // tag detectado automáticamente
 }
 
-// ─── Messages panel → agent ───────────────────────────────────────────────────
 export interface PanelMessage {
-  type:        string;
-  cmdId?:      string;
-  version?:    string;
-  container?:  string;
-  tail?:       number;
+  type:         string;
+  cmdId?:       string;
+  version?:     string;
+  container?:   string;
+  tail?:        number;
   dbContainer?: string;
-  dbUser?:     string;
-  dbName?:     string;
+  dbUser?:      string;
+  dbName?:      string;
 }
 
-// ─── Messages agent → panel ───────────────────────────────────────────────────
 export type AgentMessage =
   | { type: 'metrics' } & Metrics
   | { type: 'cmd:log';          cmdId: string; data: string      }
