@@ -88,9 +88,11 @@ export async function handleCommand(
       // 2. Pull solo el contenedor de la app (más rápido)
       const appContainer = config.appContainer || 'cinexoplatform';
       const projectName = config.projectName || 'cinexoplatform';
-      const pullCmd = `docker compose -f ${composeFile} -p ${projectName} pull ${appContainer}`;
       const projectDir = config.appDir || path.dirname(composeFile);
-      const upCmd = `docker compose --project-directory ${projectDir} -f ${composeFile} -p ${projectName} up -d ${appContainer}`;
+      const envFile = config.appEnvFile || '';
+
+      const pullCmd = `docker compose --project-directory ${projectDir} -f ${composeFile} -p ${projectName} ${envFile ? `--env-file ${envFile}` : ''} pull ${appContainer}`;
+      const upCmd = `docker compose --project-directory ${projectDir} -f ${composeFile} -p ${projectName} ${envFile ? `--env-file ${envFile}` : ''} up -d ${appContainer}`;
 
       log(`$ ${pullCmd}\n`);
       runStreaming(pullCmd, env, log, () => {
