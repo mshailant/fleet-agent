@@ -7,6 +7,7 @@ export interface AgentConfig {
   metricsInterval: number;
   appContainer: string;
   projectName: string;
+  appDir: string;
 }
 
 export interface ContainerInfo {

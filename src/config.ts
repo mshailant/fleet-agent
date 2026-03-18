@@ -19,4 +19,5 @@ export const config: AgentConfig = {
   metricsInterval: Number(process.env.METRICS_INTERVAL || 30_000),
   appContainer: process.env.APP_CONTAINER || '',
   projectName: process.env.PROJECT_NAME || '',
+  appDir: process.env.APP_DIR || '',
 };

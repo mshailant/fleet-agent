@@ -89,7 +89,8 @@ export async function handleCommand(
       const appContainer = config.appContainer || 'cinexoplatform';
       const projectName = config.projectName || 'cinexoplatform';
       const pullCmd = `docker compose -f ${composeFile} -p ${projectName} pull ${appContainer}`;
-      const upCmd = `docker compose --project-directory ${path.dirname(composeFile)} -f ${composeFile} -p ${projectName} up -d ${appContainer}`;
+      const projectDir = config.appDir || path.dirname(composeFile);
+      const upCmd = `docker compose --project-directory ${projectDir} -f ${composeFile} -p ${projectName} up -d ${appContainer}`;
 
       log(`$ ${pullCmd}\n`);
       runStreaming(pullCmd, env, log, () => {
