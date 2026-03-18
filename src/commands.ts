@@ -1,8 +1,9 @@
-import { exec }   from 'child_process';
-import * as fs    from 'fs';
-import * as path  from 'path';
-import Docker     from 'dockerode';
+import { exec }    from 'child_process';
+import * as fs     from 'fs';
+import * as path   from 'path';
+import Docker      from 'dockerode';
 import { getLogs } from './metrics';
+import { config }  from './config';
 import type { PanelMessage, AgentMessage } from './types';
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
@@ -24,19 +25,26 @@ function runStreaming(
   child.on('error', e => onError(e.message));
 }
 
-// ─── Update .env VERSION field ────────────────────────────────────────────────
-function patchEnvVersion(composeFile: string, newVersion: string, log: (d: string) => void): void {
-  const envFile = path.join(path.dirname(composeFile), '.env');
-  if (!fs.existsSync(envFile)) return;
+// ─── Update VERSION in app .env ───────────────────────────────────────────────
+function patchEnvVersion(newVersion: string, log: (d: string) => void): boolean {
+  // Prefer explicit APP_ENV_FILE, fallback to .env next to compose file
+  const envFile = config.appEnvFile || path.join(path.dirname(config.composeFile), '.env');
+
+  if (!fs.existsSync(envFile)) {
+    log(`⚠ No se encontró el .env en: ${envFile}\n`);
+    return false;
+  }
   try {
     let content = fs.readFileSync(envFile, 'utf8');
     content = /^VERSION=/m.test(content)
       ? content.replace(/^VERSION=.*/m, `VERSION=${newVersion}`)
       : content + `\nVERSION=${newVersion}\n`;
     fs.writeFileSync(envFile, content);
-    log(`✓ VERSION actualizada a ${newVersion} en .env\n`);
+    log(`✓ VERSION actualizada a ${newVersion} en ${envFile}\n`);
+    return true;
   } catch (e: any) {
     log(`⚠ No se pudo actualizar .env: ${e.message}\n`);
+    return false;
   }
 }
 
@@ -56,44 +64,64 @@ export async function handleCommand(
 
   switch (type) {
 
-    // ── Ping: return metrics immediately ─────────────────────────────────────
+    // ── Ping ──────────────────────────────────────────────────────────────────
     case 'ping':
       await sendMetrics();
       break;
 
-    // ── Logs ─────────────────────────────────────────────────────────────────
+    // ── Logs ──────────────────────────────────────────────────────────────────
     case 'logs': {
       const lines = await getLogs(msg.container ?? 'app', msg.tail ?? 100);
       send({ type: 'cmd:logs', cmdId, lines });
       break;
     }
 
-    // ── Update: patch .env, pull, up ─────────────────────────────────────────
+    // ── Update: patch .env VERSION, pull, up ─────────────────────────────────
     case 'update': {
-      if (msg.version) patchEnvVersion(composeFile, msg.version, log);
+      if (!msg.version) { fail('version requerida'); break; }
 
-      const steps = [
-        `docker-compose -f ${composeFile} pull`,
-        `docker-compose -f ${composeFile} up -d`,
-      ];
+      log(`🚀 Iniciando actualización a ${msg.version}…\n`);
 
-      let i = 0;
-      const runNext = (): void => {
-        if (i >= steps.length) { done(); return; }
-        const cmd = steps[i++];
-        log(`$ ${cmd}\n`);
-        runStreaming(cmd, env, log, runNext, fail);
-      };
-      runNext();
+      // 1. Patch .env
+      patchEnvVersion(msg.version, log);
+
+      // 2. Pull solo el contenedor de la app (más rápido)
+      const appContainer = config.appContainer || 'cinexoplatform';
+      const pullCmd = `docker compose -f ${composeFile} pull ${appContainer}`;
+      const upCmd   = `docker compose -f ${composeFile} up -d ${appContainer}`;
+
+      log(`$ ${pullCmd}\n`);
+      runStreaming(pullCmd, env, log, () => {
+        log(`$ ${upCmd}\n`);
+        runStreaming(upCmd, env, log, async () => {
+          log(`✓ Actualización completada\n`);
+          done();
+          await sendMetrics();
+        }, fail);
+      }, fail);
       break;
     }
 
-    // ── Rollback ──────────────────────────────────────────────────────────────
+    // ── Rollback: patch .env con versión anterior, up ─────────────────────────
     case 'rollback': {
       if (!msg.version) { fail('version requerida'); break; }
-      const cmd = `APP_VERSION=${msg.version} docker-compose -f ${composeFile} up -d`;
-      log(`$ ${cmd}\n`);
-      runStreaming(cmd, env, log, done, fail);
+
+      log(`⏪ Rollback a ${msg.version}…\n`);
+      patchEnvVersion(msg.version, log);
+
+      const appContainer = config.appContainer || 'cinexoplatform';
+      const pullCmd = `docker compose -f ${composeFile} pull ${appContainer}`;
+      const upCmd   = `docker compose -f ${composeFile} up -d ${appContainer}`;
+
+      log(`$ ${pullCmd}\n`);
+      runStreaming(pullCmd, env, log, () => {
+        log(`$ ${upCmd}\n`);
+        runStreaming(upCmd, env, log, async () => {
+          log(`✓ Rollback completado\n`);
+          done();
+          await sendMetrics();
+        }, fail);
+      }, fail);
       break;
     }
 
@@ -112,13 +140,13 @@ export async function handleCommand(
 
     // ── Restart all ───────────────────────────────────────────────────────────
     case 'restart-all': {
-      const cmd = `docker-compose -f ${composeFile} restart`;
+      const cmd = `docker compose -f ${composeFile} restart`;
       log(`$ ${cmd}\n`);
       runStreaming(cmd, env, log, async () => { done(); await sendMetrics(); }, fail);
       break;
     }
 
-    // ── Backup: pg_dump → gzip → send to panel ───────────────────────────────
+    // ── Backup ────────────────────────────────────────────────────────────────
     case 'backup': {
       const date        = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const filename    = `db_${date}_${Date.now()}.sql.gz`;
@@ -131,7 +159,7 @@ export async function handleCommand(
 
       const dumpCmd = `docker exec ${dbContainer} pg_dump -U ${dbUser} ${dbName} | gzip > ${tmpPath}`;
       runStreaming(dumpCmd, env, log, () => {
-        log('pg_dump OK ✓ — enviando al panel…\n');
+        log('pg_dump OK ✓ — enviando al panel…\n`');
         try {
           const data   = fs.readFileSync(tmpPath).toString('base64');
           const sizeMb = parseFloat((fs.statSync(tmpPath).size / 1024 / 1024).toFixed(2));

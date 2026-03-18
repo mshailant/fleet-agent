@@ -3,8 +3,9 @@ export interface AgentConfig {
   clientId:        string;
   agentToken:      string;
   composeFile:     string;
+  appEnvFile:      string;   // ruta al .env de la app (para actualizar VERSION)
   metricsInterval: number;
-  appContainer:    string;  // nombre del contenedor a monitorear para la versión
+  appContainer:    string;
 }
 
 export interface ContainerInfo {
@@ -23,7 +24,7 @@ export interface Metrics {
   uptime:       string;
   status:       AgentStatus;
   containers:   ContainerInfo[];
-  appVersion:   string | null;  // tag detectado automáticamente
+  appVersion:   string | null;
 }
 
 export interface PanelMessage {

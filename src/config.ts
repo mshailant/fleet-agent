@@ -15,6 +15,7 @@ export const config: AgentConfig = {
   clientId:        required('CLIENT_ID'),
   agentToken:      required('AGENT_TOKEN'),
   composeFile:     process.env.COMPOSE_FILE     || '/opt/app/docker-compose.yml',
+  appEnvFile:      process.env.APP_ENV_FILE     || '',  // ruta al .env de la app
   metricsInterval: Number(process.env.METRICS_INTERVAL || 30_000),
-  appContainer:    process.env.APP_CONTAINER    || '', // nombre del contenedor a monitorear
+  appContainer:    process.env.APP_CONTAINER    || '',
 };
