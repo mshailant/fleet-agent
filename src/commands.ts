@@ -92,7 +92,7 @@ export async function handleCommand(
       const envFile = config.appEnvFile || '';
 
       const pullCmd = `docker compose --project-directory ${projectDir} -f ${composeFile} -p ${projectName} ${envFile ? `--env-file ${envFile}` : ''} pull ${appContainer}`;
-      const upCmd = `docker compose --project-directory ${projectDir} -f ${composeFile} -p ${projectName} ${envFile ? `--env-file ${envFile}` : ''} up -d ${appContainer}`;
+      const upCmd = `docker compose --project-directory ${projectDir} -f ${composeFile} -p ${projectName} ${envFile ? `--env-file ${envFile}` : ''} up -d --force-recreate --no-deps ${appContainer}`;
 
       log(`$ ${pullCmd}\n`);
       runStreaming(pullCmd, env, log, () => {
