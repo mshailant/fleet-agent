@@ -114,8 +114,12 @@ export async function handleCommand(
       patchEnvVersion(msg.version, log);
 
       const appContainer = config.appContainer || 'cinexoplatform';
-      const pullCmd = `docker compose -f ${composeFile} pull ${appContainer}`;
-      const upCmd = `docker compose -f ${composeFile} up -d ${appContainer}`;
+      const projectName = config.projectName || 'cinexoplatform';
+      const projectDir = config.appDir || path.dirname(composeFile);
+      const envFile = config.appEnvFile || '';
+
+      const pullCmd = `docker compose --project-directory ${projectDir} -f ${composeFile} -p ${projectName} ${envFile ? `--env-file ${envFile}` : ''} pull ${appContainer}`;
+      const upCmd = `docker compose --project-directory ${projectDir} -f ${composeFile} -p ${projectName} ${envFile ? `--env-file ${envFile}` : ''} up -d ${appContainer}`;
 
       log(`$ ${pullCmd}\n`);
       runStreaming(pullCmd, env, log, () => {
