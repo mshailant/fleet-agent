@@ -1,9 +1,9 @@
-import { exec }    from 'child_process';
-import * as fs     from 'fs';
-import * as path   from 'path';
-import Docker      from 'dockerode';
+import { exec } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
+import Docker from 'dockerode';
 import { getLogs } from './metrics';
-import { config }  from './config';
+import { config } from './config';
 import type { PanelMessage, AgentMessage } from './types';
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' });
@@ -12,10 +12,10 @@ type SendFn = (msg: AgentMessage) => void;
 
 // ─── Streaming shell command ──────────────────────────────────────────────────
 function runStreaming(
-  cmd:     string,
-  env:     NodeJS.ProcessEnv,
-  onData:  (d: string) => void,
-  onDone:  () => void,
+  cmd: string,
+  env: NodeJS.ProcessEnv,
+  onData: (d: string) => void,
+  onDone: () => void,
   onError: (msg: string) => void,
 ): void {
   const child = exec(cmd, { env });
@@ -50,16 +50,16 @@ function patchEnvVersion(newVersion: string, log: (d: string) => void): boolean 
 
 // ─── Command dispatcher ───────────────────────────────────────────────────────
 export async function handleCommand(
-  msg:         PanelMessage,
+  msg: PanelMessage,
   composeFile: string,
-  send:        SendFn,
+  send: SendFn,
   sendMetrics: () => Promise<void>,
 ): Promise<void> {
   const { cmdId = '', type } = msg;
   const env = { ...process.env, COMPOSE_FILE: composeFile };
 
-  const log  = (data: string)    => send({ type: 'cmd:log',   cmdId, data });
-  const done = ()                => send({ type: 'cmd:done',  cmdId });
+  const log = (data: string) => send({ type: 'cmd:log', cmdId, data });
+  const done = () => send({ type: 'cmd:done', cmdId });
   const fail = (message: string) => send({ type: 'cmd:error', cmdId, message });
 
   switch (type) {
@@ -87,8 +87,9 @@ export async function handleCommand(
 
       // 2. Pull solo el contenedor de la app (más rápido)
       const appContainer = config.appContainer || 'cinexoplatform';
-      const pullCmd = `docker compose -f ${composeFile} pull ${appContainer}`;
-      const upCmd   = `docker compose -f ${composeFile} up -d ${appContainer}`;
+      const projectName = config.projectName || 'cinexoplatform';
+      const pullCmd = `docker compose -f ${composeFile} -p ${projectName} pull ${appContainer}`;
+      const upCmd = `docker compose -f ${composeFile} -p ${projectName} up -d ${appContainer}`;
 
       log(`$ ${pullCmd}\n`);
       runStreaming(pullCmd, env, log, () => {
@@ -111,7 +112,7 @@ export async function handleCommand(
 
       const appContainer = config.appContainer || 'cinexoplatform';
       const pullCmd = `docker compose -f ${composeFile} pull ${appContainer}`;
-      const upCmd   = `docker compose -f ${composeFile} up -d ${appContainer}`;
+      const upCmd = `docker compose -f ${composeFile} up -d ${appContainer}`;
 
       log(`$ ${pullCmd}\n`);
       runStreaming(pullCmd, env, log, () => {
@@ -148,12 +149,12 @@ export async function handleCommand(
 
     // ── Backup ────────────────────────────────────────────────────────────────
     case 'backup': {
-      const date        = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      const filename    = `db_${date}_${Date.now()}.sql.gz`;
-      const tmpPath     = `/tmp/${filename}`;
+      const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const filename = `db_${date}_${Date.now()}.sql.gz`;
+      const tmpPath = `/tmp/${filename}`;
       const dbContainer = msg.dbContainer ?? 'db';
-      const dbUser      = msg.dbUser      ?? 'postgres';
-      const dbName      = msg.dbName      ?? 'app';
+      const dbUser = msg.dbUser ?? 'postgres';
+      const dbName = msg.dbName ?? 'app';
 
       log(`Iniciando pg_dump en contenedor '${dbContainer}'…\n`);
 
@@ -161,13 +162,13 @@ export async function handleCommand(
       runStreaming(dumpCmd, env, log, () => {
         log('pg_dump OK ✓ — enviando al panel…\n`');
         try {
-          const data   = fs.readFileSync(tmpPath).toString('base64');
+          const data = fs.readFileSync(tmpPath).toString('base64');
           const sizeMb = parseFloat((fs.statSync(tmpPath).size / 1024 / 1024).toFixed(2));
           send({ type: 'cmd:backup-ready', cmdId, filename, sizeMb, data });
         } catch (e: any) {
           fail(`Error leyendo backup: ${e.message}`);
         } finally {
-          try { fs.unlinkSync(tmpPath); } catch {}
+          try { fs.unlinkSync(tmpPath); } catch { }
         }
       }, fail);
       break;
